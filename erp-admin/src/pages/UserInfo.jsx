@@ -17,10 +17,17 @@ import {
   FaBuilding,
   FaUserTie,
   FaFileAlt,
+  FaCheckCircle,
+  FaTimesCircle,
+  FaUserCheck, // For Employment Status
 } from "react-icons/fa"
 import { ToastContainer, toast } from "react-toastify"
 import "react-toastify/dist/ReactToastify.css"
 import * as XLSX from "xlsx"
+
+// Regex Constants
+const PAN_REGEX = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
+const AADHAAR_REGEX = /^[2-9]{1}[0-9]{3}\s?[0-9]{4}\s?[0-9]{4}$/;
 
 // Lazy load the AddUserModal component
 const AddUserModal = lazy(() => import("../modals/add-user-modal"))
@@ -113,6 +120,10 @@ const buttonVariants = {
 }
 
 // Fallback data that matches the entity structure
+const PREDEFINED_BANK_NAMES = ["HDFC Bank", "State Bank of India", "Punjab National Bank", "ICICI Bank"];
+const EMPLOYMENT_STATUS_OPTIONS = ["Active", "Absconded", "Resigned", "Terminated", "Others"];
+// PREDEFINED_DEPARTMENTS and PREDEFINED_DESIGNATIONS are already defined below, closer to UserInfo component.
+
 const fallbackUserData = {
   users: [
     {
@@ -140,7 +151,14 @@ const fallbackUserData = {
       personalFileNumber: "PF001",
       passbookFile: null,
       photo: null,
-      status: "N",
+      qualificationDocument: null,
+      offerLetterDocument: null,
+      addressProofDocument: null,
+      medicalBackgroundDocument: null,
+      legalBackgroundDocument: null,
+      status: "N", // This seems to be approval status, not employment status
+      employmentStatus: "Active",
+      reasonForDiscontinuity: "",
     },
     {
       srNo: 2,
@@ -151,13 +169,13 @@ const fallbackUserData = {
       emailAddress: "jane.smith@example.com",
       qualification: "Master's in Business Administration",
       dateOfJoining: "2022-03-20",
-      designation: "Project Manager",
+      designation: "Chief Happiness Officer",
       department: "Operations",
       reportingOfficer: "Robert Johnson",
       grossSalary: 85000,
       bankAccountNumber: "0987654321",
       ifscCode: "SBIN0001234",
-      bankName: "State Bank of India",
+      bankName: "Custom Bank of Springfield",
       medicalBackground: "Diabetes - Type 2",
       legalBackground: "Clean record",
       pan: "FGHIJ5678K",
@@ -167,7 +185,14 @@ const fallbackUserData = {
       personalFileNumber: "PF002",
       passbookFile: null,
       photo: null,
-      status: "Y",
+      qualificationDocument: null,
+      offerLetterDocument: null,
+      addressProofDocument: null,
+      medicalBackgroundDocument: null,
+      legalBackgroundDocument: null,
+      status: "Y", // Approval status
+      employmentStatus: "Resigned",
+      reasonForDiscontinuity: "Moving to another city.",
     },
   ],
 }
@@ -181,6 +206,45 @@ function formatDate(dateString) {
   })
 }
 
+// PREDEFINED_DEPARTMENTS and PREDEFINED_DESIGNATIONS are correctly defined here.
+// PREDEFINED_BANK_NAMES was added above fallbackUserData for clarity.
+
+// Helper function to process user data for "Others" select logic
+const processUserDataForSelects = (user) => {
+  if (!user) return {}; // Handle null or undefined user
+
+  const isOtherBank = user.bankName && !PREDEFINED_BANK_NAMES.includes(user.bankName);
+  const isOtherDept = user.department && !PREDEFINED_DEPARTMENTS.includes(user.department);
+  const isOtherDesg = user.designation && !PREDEFINED_DESIGNATIONS.includes(user.designation);
+  // For employmentStatus, if it's not in the main list (excluding "Others"), treat it as "Others"
+  // and move the original value to reasonForDiscontinuity if reason is empty.
+  let currentEmploymentStatus = user.employmentStatus;
+  let currentReasonForDiscontinuity = user.reasonForDiscontinuity || "";
+
+  if (user.employmentStatus && !EMPLOYMENT_STATUS_OPTIONS.includes(user.employmentStatus)) {
+    currentEmploymentStatus = "Others";
+    // If reason is empty or was just the status itself, use the original status as reason.
+    if (!currentReasonForDiscontinuity || currentReasonForDiscontinuity === user.employmentStatus) {
+      currentReasonForDiscontinuity = user.employmentStatus;
+    }
+  }
+
+
+  return {
+    ...user,
+    otherBankName: isOtherBank ? user.bankName : "",
+    bankName: isOtherBank ? "Others" : user.bankName,
+    otherDepartment: isOtherDept ? user.department : "",
+    department: isOtherDept ? "Others" : user.department,
+    otherDesignation: isOtherDesg ? user.designation : "",
+    designation: isOtherDesg ? "Others" : user.designation,
+    employmentStatus: currentEmploymentStatus,
+    reasonForDiscontinuity: currentReasonForDiscontinuity,
+    bankAccountNumberConfirmation: user.bankAccountNumberConfirmation || "",
+    ifscCodeConfirmation: user.ifscCodeConfirmation || "",
+  };
+};
+
 function UserInfo() {
   const [activeTab, setActiveTab] = useState("personal")
   const [isEditing, setIsEditing] = useState(false)
@@ -190,6 +254,8 @@ function UserInfo() {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [panError, setPanError] = useState("")
+  const [aadhaarError, setAadhaarError] = useState("")
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -227,6 +293,9 @@ function UserInfo() {
         if (usersList.length > 0) {
           const processedUsers = usersList.map((user) => ({
             ...user,
+            bankAccountNumberConfirmation: "",
+            ifscCodeConfirmation: "",
+            // otherBankName, otherDepartment, otherDesignation will be set by processUserDataForSelects
             employeeName: user.employeeName || "",
             employeeSerialNumber: user.employeeSerialNumber || "",
             address: user.address || "",
@@ -248,21 +317,49 @@ function UserInfo() {
             passbookFile: user.passbookFile || null,
             status: user.status || "N",
             photo: user.photo || null,
+            qualificationDocument: user.qualificationDocument || null,
+            offerLetterDocument: user.offerLetterDocument || null,
+            addressProofDocument: user.addressProofDocument || null,
+            medicalBackgroundDocument: user.medicalBackgroundDocument || null,
+            legalBackgroundDocument: user.legalBackgroundDocument || null,
           }))
 
-          setUsers(processedUsers)
-          setFormData(processedUsers[0])
+          // Initial mapping to ensure all fields from API are present before processing
+          const initialProcessedUsers = usersList.map(user => ({
+            ...user, // Spread all fields from API
+            // Initialize fields that might be missing for the new 'employmentStatus' feature
+            employmentStatus: user.employmentStatus || "Active", // Default to "Active" if not present
+            reasonForDiscontinuity: user.reasonForDiscontinuity || "",
+            bankAccountNumberConfirmation: user.bankAccountNumberConfirmation || "",
+            ifscCodeConfirmation: user.ifscCodeConfirmation || "",
+            otherBankName: user.otherBankName || "",
+            otherDepartment: user.otherDepartment || "",
+            otherDesignation: user.otherDesignation || "",
+          }));
+
+          const usersWithCorrectedSelects = initialProcessedUsers.map(processUserDataForSelects);
+          setUsers(usersWithCorrectedSelects);
+
+          if (usersWithCorrectedSelects.length > 0) {
+            setFormData(usersWithCorrectedSelects[0]);
+          } else {
+            setFormData(processUserDataForSelects({
+              bankName: "", department: "", designation: "", employmentStatus: "Active", reasonForDiscontinuity: "",
+            }));
+          }
+
         } else {
           console.log("API returned no users, using fallback data")
-          setUsers(fallbackUserData.users)
-          setFormData(fallbackUserData.users[0])
+          const fallbackUsersProcessed = fallbackUserData.users.map(processUserDataForSelects);
+          setUsers(fallbackUsersProcessed);
+          setFormData(fallbackUsersProcessed.length > 0 ? fallbackUsersProcessed[0] : processUserDataForSelects({employmentStatus: "Active"}));
         }
       } catch (err) {
         console.error("Error fetching users:", err)
         setError(err.message)
-
-        setUsers(fallbackUserData.users)
-        setFormData(fallbackUserData.users[0])
+        const fallbackUsersProcessed = fallbackUserData.users.map(processUserDataForSelects);
+        setUsers(fallbackUsersProcessed);
+        setFormData(fallbackUsersProcessed.length > 0 ? fallbackUsersProcessed[0] : processUserDataForSelects({employmentStatus: "Active"}));
 
         toast.error(`Backend server not available. Using demo data.`, {
           position: "top-right",
@@ -277,36 +374,151 @@ function UserInfo() {
   }, [])
 
   const handleInputChange = (e) => {
-    const { name, value } = e.target
+    let { name, value } = e.target;
+
+    // Uppercase PAN input immediately
+    if (name === "pan") {
+      value = value.toUpperCase();
+    }
+
     if (name.includes(".")) {
-      const [parent, child] = name.split(".")
+      const [parent, child] = name.split(".");
       setFormData((prev) => ({
         ...prev,
         [parent]: {
           ...prev[parent],
           [child]: value,
         },
-      }))
+      }));
     } else {
       setFormData((prev) => ({
         ...prev,
         [name]: value,
-      }))
+        ...(name === "bankName" && value !== "Others" && { otherBankName: "" }),
+        ...(name === "department" && value !== "Others" && { otherDepartment: "" }),
+        ...(name === "designation" && value !== "Others" && { otherDesignation: "" }),
+      }));
+    }
+
+    // Perform validation after state update or based on new value
+    if (name === "pan") {
+      if (value && !PAN_REGEX.test(value)) {
+        setPanError("Invalid PAN format. Should be ABCDE1234F.");
+      } else {
+        setPanError("");
+      }
+    } else if (name === "adhaar") {
+      if (value && !AADHAAR_REGEX.test(value)) {
+        setAadhaarError("Invalid Aadhaar format. Should be a 12-digit number (e.g., 1234 5678 9012).");
+      } else {
+        setAadhaarError("");
+      }
+    }
+
+    // Additional logic specific to employmentStatus
+    if (name === "employmentStatus") {
+      if (value === "Active" || value === "") {
+        // Clear reasonForDiscontinuity if status is Active or "Select Status"
+        setFormData(prev => ({ ...prev, reasonForDiscontinuity: "" }));
+      }
+    }
+  };
+
+  const handleFileChange = (e, documentType) => {
+    const file = e.target.files[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        // The result contains the data as a URL representing the file's data as a base64 encoded string.
+        // We need to extract the base64 part from "data:mime/type;base64,BASE64_STRING"
+        const base64String = reader.result.split(",")[1]
+        setFormData((prev) => ({
+          ...prev,
+          [documentType]: base64String,
+        }))
+      }
+      reader.readAsDataURL(file)
     }
   }
 
   const handleSubmit = async (e) => {
-    e.preventDefault()
+    e.preventDefault();
 
-    try {
-      const userId = formData.srNo
-
-      const userData = {
-        ...formData,
+    if (isEditing) {
+      // Bank Account Confirmation
+      if (formData.bankAccountNumber && formData.bankAccountNumber !== formData.bankAccountNumberConfirmation) {
+        toast.error("Bank account numbers do not match. Please correct before saving.", { position: "top-right", autoClose: 5000 });
+        return;
+      }
+      // IFSC Code Confirmation
+      if (formData.ifscCode && formData.ifscCode !== formData.ifscCodeConfirmation) {
+        toast.error("IFSC codes do not match. Please correct before saving.", { position: "top-right", autoClose: 5000 });
+        return;
       }
 
-      console.log("Updating user data for ID:", userId)
-      console.log("Update payload:", JSON.stringify(userData))
+      // PAN Validation
+      if (panError) { // Check error state first
+        toast.error("Invalid PAN number. Please correct before saving.", { position: "top-right", autoClose: 5000 });
+        return;
+      }
+      if (formData.pan && !PAN_REGEX.test(formData.pan)) { // Double check value
+        setPanError("Invalid PAN format. Should be ABCDE1234F.");
+        toast.error("Invalid PAN number. Please correct before saving.", { position: "top-right", autoClose: 5000 });
+        return;
+      }
+
+      // Aadhaar Validation
+      if (aadhaarError) { // Check error state first
+        toast.error("Invalid Aadhaar number. Please correct before saving.", { position: "top-right", autoClose: 5000 });
+        return;
+      }
+      const aadhaarValue = formData.adhaar || "";
+      const aadhaarWithoutSpaces = aadhaarValue.replace(/\s/g, "");
+      if (aadhaarValue && (!AADHAAR_REGEX.test(aadhaarValue) || aadhaarWithoutSpaces.length !== 12)) { // Double check value
+        setAadhaarError("Invalid Aadhaar format. Should be a 12-digit number.");
+        toast.error("Invalid Aadhaar number. Please correct before saving.", { position: "top-right", autoClose: 5000 });
+        return;
+      }
+    }
+
+    try {
+      const userId = formData.srNo;
+      const userData = { ...formData };
+
+      // Delete UI-only fields
+      delete userData.bankAccountNumberConfirmation;
+      delete userData.ifscCodeConfirmation;
+      delete userData.panError; // Should not be part of formData, but good practice
+      delete userData.aadhaarError; // Should not be part of formData
+
+      // Handle "Others" logic for bankName, department, designation
+      if (userData.bankName === "Others") {
+        userData.bankName = userData.otherBankName || "Not Specified";
+      }
+      delete userData.otherBankName;
+
+      if (userData.department === "Others") {
+        userData.department = userData.otherDepartment || "Not Specified";
+      }
+      delete userData.otherDepartment;
+
+      if (userData.designation === "Others") {
+        userData.designation = userData.otherDesignation || "Not Specified";
+      }
+      delete userData.otherDesignation;
+
+      // Sanitize Aadhaar: remove spaces
+      if (userData.adhaar) {
+        userData.adhaar = userData.adhaar.replace(/\s/g, "");
+      }
+
+      // Ensure reasonForDiscontinuity is cleared if status is Active
+      if (userData.employmentStatus === "Active" || userData.employmentStatus === "") {
+        userData.reasonForDiscontinuity = "";
+      }
+
+      console.log("Updating user data for ID:", userId);
+      console.log("Update payload:", JSON.stringify(userData));
 
       const response = await fetch(`http://localhost:8080/api/user-profiles/update/${userId}`, {
         method: "PUT",
@@ -359,7 +571,14 @@ function UserInfo() {
       if (newIndex < 0) newIndex = users.length - 1
     }
     setCurrentUserIndex(newIndex)
-    setFormData(users[newIndex])
+    // Reset fields when user changes
+    const newUserData = users[newIndex]; // This data is already processed by processUserDataForSelects
+    setFormData({
+      ...newUserData,
+      // Explicitly clear confirmation fields as they are not part of the stored user profile
+      bankAccountNumberConfirmation: "",
+      ifscCodeConfirmation: "",
+    });
     setIsEditing(false)
   }
 
@@ -394,7 +613,14 @@ function UserInfo() {
       PAN: user.pan,
       Aadhaar: user.adhaar,
       "Personal File Number": user.personalFileNumber,
-      Status: user.status === "Y" ? "Approved" : "Pending",
+      "Qualification Document": user.qualificationDocument ? "Present" : "N/A",
+      "Offer Letter Document": user.offerLetterDocument ? "Present" : "N/A",
+      "Address Proof Document": user.addressProofDocument ? "Present" : "N/A",
+      "Medical Background Document": user.medicalBackgroundDocument ? "Present" : "N/A",
+      "Legal Background Document": user.legalBackgroundDocument ? "Present" : "N/A",
+      "Approval Status": user.status === "Y" ? "Approved" : "Pending", // Renamed for clarity
+      "Employment Status": user.employmentStatus || "N/A",
+      "Reason for Discontinuity": user.reasonForDiscontinuity || "N/A",
     }))
 
     const workbook = XLSX.utils.book_new()
@@ -441,6 +667,7 @@ function UserInfo() {
   }
 
   const safeFormData = {
+    // Ensure all fields used in the form are here with defaults
     srNo: "",
     employeeSerialNumber: "",
     employeeName: "",
@@ -466,7 +693,19 @@ function UserInfo() {
     passbookFile: null,
     status: "N",
     photo: null,
-    ...formData,
+    qualificationDocument: null,
+    offerLetterDocument: null,
+    addressProofDocument: null,
+    medicalBackgroundDocument: null,
+    legalBackgroundDocument: null,
+    bankAccountNumberConfirmation: "",
+    ifscCodeConfirmation: "",
+    otherBankName: "",
+    otherDepartment: "",
+    otherDesignation: "",
+    employmentStatus: formData.employmentStatus || "Active", // Default to "Active"
+    reasonForDiscontinuity: formData.reasonForDiscontinuity || "",
+    ...formData, // Spread formData last to ensure it overrides defaults if present
   }
 
   return (
@@ -737,6 +976,18 @@ function UserInfo() {
               <FaMapMarkerAlt className="h-4 w-4 text-gray-500 dark:text-gray-400" />
               <span className="text-sm text-gray-600 dark:text-gray-300">{truncateString(safeFormData.address)}</span>
             </motion.div>
+            {/* Display Employment Status on User Card */}
+            <motion.div
+              variants={itemVariants}
+              whileHover={{ x: 5 }}
+              transition={{ type: "spring", stiffness: 400 }}
+              className="flex items-center space-x-2 rounded-md px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-800"
+            >
+              <FaUserCheck className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+              <span className="text-sm text-gray-600 dark:text-gray-300">
+                Status: {safeFormData.employmentStatus || "N/A"}
+              </span>
+            </motion.div>
           </motion.div>
         </motion.div>
 
@@ -826,6 +1077,42 @@ function UserInfo() {
                           onChange={handleInputChange}
                           disabled={!isEditing}
                         />
+                        {isEditing && safeFormData.bankAccountNumber && (
+                          <div className="mt-2">
+                            <label
+                              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                              htmlFor="bankAccountNumberConfirmation"
+                            >
+                              Confirm Bank Account Number
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="text"
+                                id="bankAccountNumberConfirmation"
+                                name="bankAccountNumberConfirmation"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100"
+                                value={safeFormData.bankAccountNumberConfirmation}
+                                onChange={handleInputChange}
+                                disabled={!isEditing}
+                              />
+                              {safeFormData.bankAccountNumberConfirmation && (
+                                <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                  {safeFormData.bankAccountNumber === safeFormData.bankAccountNumberConfirmation ? (
+                                    <FaCheckCircle className="h-5 w-5 text-green-500" />
+                                  ) : (
+                                    <FaTimesCircle className="h-5 w-5 text-red-500" />
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            {safeFormData.bankAccountNumberConfirmation && safeFormData.bankAccountNumber !== safeFormData.bankAccountNumberConfirmation && (
+                              <p className="mt-1 text-xs text-red-600">Bank account numbers do not match.</p>
+                            )}
+                             {safeFormData.bankAccountNumberConfirmation && safeFormData.bankAccountNumber === safeFormData.bankAccountNumberConfirmation && (
+                              <p className="mt-1 text-xs text-green-600">Bank account numbers matched.</p>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       <div>
@@ -917,6 +1204,54 @@ function UserInfo() {
                           disabled={!isEditing}
                         />
                       </div>
+
+                      {/* Employment Status Dropdown */}
+                      <div>
+                        <label
+                          htmlFor="employmentStatus"
+                          className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                        >
+                          Employment Status
+                        </label>
+                        <select
+                          id="employmentStatus"
+                          name="employmentStatus"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100"
+                          value={safeFormData.employmentStatus || ""}
+                          onChange={handleInputChange}
+                          disabled={!isEditing}
+                        >
+                          <option value="">Select Status</option>
+                          {EMPLOYMENT_STATUS_OPTIONS.map(status => (
+                            <option key={status} value={status}>{status}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Reason for Discontinuity Text Area */}
+                      {/* Visible if isEditing AND status is Absconded, Resigned, Terminated, or Others */}
+                      {isEditing &&
+                       safeFormData.employmentStatus &&
+                       !["Active", ""].includes(safeFormData.employmentStatus) && (
+                        <div className="md:col-span-2">
+                          <label
+                            htmlFor="reasonForDiscontinuity"
+                            className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                          >
+                            Reason for Discontinuity
+                          </label>
+                          <textarea
+                            id="reasonForDiscontinuity"
+                            name="reasonForDiscontinuity"
+                            rows="3"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100"
+                            value={safeFormData.reasonForDiscontinuity}
+                            onChange={handleInputChange}
+                            disabled={!isEditing}
+                            placeholder={safeFormData.employmentStatus === "Others" ? "Please specify reason/status" : "Reason"}
+                          />
+                        </div>
+                      )}
                     </div>
                   </form>
                 </motion.div>
@@ -958,15 +1293,34 @@ function UserInfo() {
                         >
                           Designation
                         </label>
-                        <input
-                          type="text"
+                        <select
                           id="designation"
                           name="designation"
                           className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100"
-                          value={safeFormData.designation}
+                          value={safeFormData.designation || ""}
                           onChange={handleInputChange}
                           disabled={!isEditing}
-                        />
+                        >
+                          <option value="">Select Designation</option>
+                          {PREDEFINED_DESIGNATIONS.map(desg => <option key={desg} value={desg}>{desg}</option>)}
+                          <option value="Others">Others</option>
+                        </select>
+                        {isEditing && safeFormData.designation === "Others" && (
+                          <div className="mt-2">
+                            <label htmlFor="otherDesignation" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              Please specify other designation
+                            </label>
+                            <textarea
+                              id="otherDesignation"
+                              name="otherDesignation"
+                              rows="2"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100"
+                              value={safeFormData.otherDesignation}
+                              onChange={handleInputChange}
+                              disabled={!isEditing}
+                            />
+                          </div>
+                        )}
                       </div>
 
                       <div>
@@ -976,15 +1330,34 @@ function UserInfo() {
                         >
                           Department
                         </label>
-                        <input
-                          type="text"
+                        <select
                           id="department"
                           name="department"
                           className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100"
-                          value={safeFormData.department}
+                          value={safeFormData.department || ""}
                           onChange={handleInputChange}
                           disabled={!isEditing}
-                        />
+                        >
+                          <option value="">Select Department</option>
+                          {PREDEFINED_DEPARTMENTS.map(dept => <option key={dept} value={dept}>{dept}</option>)}
+                          <option value="Others">Others</option>
+                        </select>
+                        {isEditing && safeFormData.department === "Others" && (
+                          <div className="mt-2">
+                            <label htmlFor="otherDepartment" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              Please specify other department
+                            </label>
+                            <textarea
+                              id="otherDepartment"
+                              name="otherDepartment"
+                              rows="2"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100"
+                              value={safeFormData.otherDepartment}
+                              onChange={handleInputChange}
+                              disabled={!isEditing}
+                            />
+                          </div>
+                        )}
                       </div>
 
                       <div>
@@ -1059,6 +1432,44 @@ function UserInfo() {
                           maxLength="11"
                           style={{ textTransform: "uppercase" }}
                         />
+                        {isEditing && safeFormData.ifscCode && (
+                          <div className="mt-2">
+                            <label
+                              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                              htmlFor="ifscCodeConfirmation"
+                            >
+                              Confirm IFSC Code
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="text"
+                                id="ifscCodeConfirmation"
+                                name="ifscCodeConfirmation"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100"
+                                value={safeFormData.ifscCodeConfirmation}
+                                onChange={handleInputChange}
+                                disabled={!isEditing}
+                                maxLength="11"
+                                style={{ textTransform: "uppercase" }}
+                              />
+                              {safeFormData.ifscCodeConfirmation && (
+                                <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                  {safeFormData.ifscCode === safeFormData.ifscCodeConfirmation ? (
+                                    <FaCheckCircle className="h-5 w-5 text-green-500" />
+                                  ) : (
+                                    <FaTimesCircle className="h-5 w-5 text-red-500" />
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            {safeFormData.ifscCodeConfirmation && safeFormData.ifscCode !== safeFormData.ifscCodeConfirmation && (
+                              <p className="mt-1 text-xs text-red-600">IFSC codes do not match.</p>
+                            )}
+                            {safeFormData.ifscCodeConfirmation && safeFormData.ifscCode === safeFormData.ifscCodeConfirmation && (
+                               <p className="mt-1 text-xs text-green-600">IFSC codes matched.</p>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       <div>
@@ -1081,7 +1492,27 @@ function UserInfo() {
                           <option value="State Bank of India">State Bank of India</option>
                           <option value="Punjab National Bank">Punjab National Bank</option>
                           <option value="ICICI Bank">ICICI Bank</option>
+                          <option value="Others">Others</option>
                         </select>
+                        {isEditing && safeFormData.bankName === "Others" && (
+                          <div className="mt-2">
+                            <label
+                              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                              htmlFor="otherBankName"
+                            >
+                              Please specify other bank name
+                            </label>
+                            <textarea
+                              id="otherBankName"
+                              name="otherBankName"
+                              rows="2"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100"
+                              value={safeFormData.otherBankName}
+                              onChange={handleInputChange}
+                              disabled={!isEditing}
+                            ></textarea>
+                          </div>
+                        )}
                       </div>
 
                       <div>
@@ -1130,7 +1561,9 @@ function UserInfo() {
                           onChange={handleInputChange}
                           disabled={!isEditing}
                           maxLength="10"
+                          style={{ textTransform: "uppercase" }}
                         />
+                        {panError && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{panError}</p>}
                       </div>
 
                       <div>
@@ -1148,8 +1581,9 @@ function UserInfo() {
                           value={safeFormData.adhaar}
                           onChange={handleInputChange}
                           disabled={!isEditing}
-                          maxLength="12"
+                          // maxLength removed to allow spaces, regex will validate format
                         />
+                        {aadhaarError && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{aadhaarError}</p>}
                       </div>
 
                       <div className="md:col-span-2">
@@ -1259,6 +1693,172 @@ function UserInfo() {
                           </div>
                         </motion.div>
                       )}
+
+                      {/* Qualification Document */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" htmlFor="qualificationDocument">
+                          Qualification Document
+                        </label>
+                        {isEditing && (
+                          <input
+                            type="file"
+                            id="qualificationDocument"
+                            name="qualificationDocument"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100 mb-2"
+                            onChange={(e) => handleFileChange(e, "qualificationDocument")}
+                            disabled={!isEditing}
+                          />
+                        )}
+                        {safeFormData.qualificationDocument && (
+                          <div className="flex items-center space-x-2 mt-1">
+                            <FaFileAlt className="h-5 w-5 text-indigo-500" />
+                            <span className="text-sm text-gray-600 dark:text-gray-300">
+                              {typeof safeFormData.qualificationDocument === 'string' && safeFormData.qualificationDocument.length > 30 ? 'Qualification Doc Uploaded' : safeFormData.qualificationDocument || 'No file'}
+                            </span>
+                            <a
+                              href={`data:application/octet-stream;base64,${safeFormData.qualificationDocument}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm text-indigo-600 hover:text-indigo-800"
+                            >
+                              View
+                            </a>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Offer Letter Document */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" htmlFor="offerLetterDocument">
+                          Offer Letter Document
+                        </label>
+                        {isEditing && (
+                          <input
+                            type="file"
+                            id="offerLetterDocument"
+                            name="offerLetterDocument"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100 mb-2"
+                            onChange={(e) => handleFileChange(e, "offerLetterDocument")}
+                            disabled={!isEditing}
+                          />
+                        )}
+                        {safeFormData.offerLetterDocument && (
+                          <div className="flex items-center space-x-2 mt-1">
+                            <FaFileAlt className="h-5 w-5 text-indigo-500" />
+                            <span className="text-sm text-gray-600 dark:text-gray-300">
+                             {typeof safeFormData.offerLetterDocument === 'string' && safeFormData.offerLetterDocument.length > 30 ? 'Offer Letter Uploaded' : safeFormData.offerLetterDocument || 'No file'}
+                            </span>
+                            <a
+                              href={`data:application/octet-stream;base64,${safeFormData.offerLetterDocument}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm text-indigo-600 hover:text-indigo-800"
+                            >
+                              View
+                            </a>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Address Proof Document */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" htmlFor="addressProofDocument">
+                          Address Proof Document
+                        </label>
+                        {isEditing && (
+                          <input
+                            type="file"
+                            id="addressProofDocument"
+                            name="addressProofDocument"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100 mb-2"
+                            onChange={(e) => handleFileChange(e, "addressProofDocument")}
+                            disabled={!isEditing}
+                          />
+                        )}
+                        {safeFormData.addressProofDocument && (
+                          <div className="flex items-center space-x-2 mt-1">
+                            <FaFileAlt className="h-5 w-5 text-indigo-500" />
+                            <span className="text-sm text-gray-600 dark:text-gray-300">
+                              {typeof safeFormData.addressProofDocument === 'string' && safeFormData.addressProofDocument.length > 30 ? 'Address Proof Uploaded' : safeFormData.addressProofDocument || 'No file'}
+                            </span>
+                            <a
+                              href={`data:application/octet-stream;base64,${safeFormData.addressProofDocument}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm text-indigo-600 hover:text-indigo-800"
+                            >
+                              View
+                            </a>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Medical Background Document */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" htmlFor="medicalBackgroundDocument">
+                          Medical Background Document
+                        </label>
+                        {isEditing && (
+                          <input
+                            type="file"
+                            id="medicalBackgroundDocument"
+                            name="medicalBackgroundDocument"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100 mb-2"
+                            onChange={(e) => handleFileChange(e, "medicalBackgroundDocument")}
+                            disabled={!isEditing}
+                          />
+                        )}
+                        {safeFormData.medicalBackgroundDocument && (
+                          <div className="flex items-center space-x-2 mt-1">
+                            <FaFileAlt className="h-5 w-5 text-indigo-500" />
+                            <span className="text-sm text-gray-600 dark:text-gray-300">
+                              {typeof safeFormData.medicalBackgroundDocument === 'string' && safeFormData.medicalBackgroundDocument.length > 30 ? 'Medical Doc Uploaded' : safeFormData.medicalBackgroundDocument || 'No file'}
+                            </span>
+                            <a
+                              href={`data:application/octet-stream;base64,${safeFormData.medicalBackgroundDocument}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm text-indigo-600 hover:text-indigo-800"
+                            >
+                              View
+                            </a>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Legal Background Document */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" htmlFor="legalBackgroundDocument">
+                          Legal Background Document
+                        </label>
+                        {isEditing && (
+                          <input
+                            type="file"
+                            id="legalBackgroundDocument"
+                            name="legalBackgroundDocument"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100 mb-2"
+                            onChange={(e) => handleFileChange(e, "legalBackgroundDocument")}
+                            disabled={!isEditing}
+                          />
+                        )}
+                        {safeFormData.legalBackgroundDocument && (
+                          <div className="flex items-center space-x-2 mt-1">
+                            <FaFileAlt className="h-5 w-5 text-indigo-500" />
+                            <span className="text-sm text-gray-600 dark:text-gray-300">
+                              {typeof safeFormData.legalBackgroundDocument === 'string' && safeFormData.legalBackgroundDocument.length > 30 ? 'Legal Doc Uploaded' : safeFormData.legalBackgroundDocument || 'No file'}
+                            </span>
+                            <a
+                              href={`data:application/octet-stream;base64,${safeFormData.legalBackgroundDocument}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm text-indigo-600 hover:text-indigo-800"
+                            >
+                              View
+                            </a>
+                          </div>
+                        )}
+                      </div>
+
                     </div>
                   </form>
                 </motion.div>
