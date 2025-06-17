@@ -3,11 +3,13 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import Layout from './components/Layout'
 import Login from './pages/Login'
-import Dashboard from './pages/Dashboard'
+// import Dashboard from './pages/Dashboard'
 import UserInfo from './pages/UserInfo'
+import Holiday from './pages/Holiday'
 import EmployeePage from './pages/Employee'
 import NotFound from './pages/NotFound'
-
+import AddEmployee from './modals/Add-employee'
+// import HolidayTable from './pages/ApprovedHoliday'
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated } = useAuth()
   const location = useLocation()
@@ -32,15 +34,17 @@ function App() {
           <Layout />
         </ProtectedRoute>
       }>
-        <Route index element={<Navigate to="dashboard" replace />} />
-        <Route path="dashboard" element={<Dashboard />} />
-        <Route path="user-info" element={<UserInfo />} />
+          
+        <Route path="AddEmployee" element={<AddEmployee />} />
         <Route path="employees" element={<EmployeePage />} />
+        <Route path="employees/:employeeId" element={<UserInfo />} />
+                <Route path="add-holiday" element={<Holiday />} />
+{/* <Route path="approved-holidays" element={<HolidayTable />} /> */}
       </Route>
 
       {/* Redirect base path to /admin/dashboard if authenticated, else to /login */}
       <Route path="/" element={
-          isAuthenticated ? <Navigate to="/admin/dashboard" replace /> : <Navigate to="/login" replace />
+          isAuthenticated ? <Navigate to="/admin/AddEmployee" replace /> : <Navigate to="/login" replace />
         }
       />
 

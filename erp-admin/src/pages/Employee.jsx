@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { DataGrid } from '@mui/x-data-grid';
 import TextField from '@mui/material/TextField';
 import Box from '@mui/material/Box';
@@ -6,35 +7,48 @@ import Typography from '@mui/material/Typography';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
-const columns = [
-  { field: 'employeeSerialNumber', headerName: 'Emp ID', width: 130 },
-  { field: 'employeeName', headerName: 'Name', width: 200 },
-  { field: 'emailAddress', headerName: 'Email', width: 250 },
-  { field: 'designation', headerName: 'Designation', width: 180 },
-  { field: 'department', headerName: 'Department', width: 150 },
-  {
-    field: 'status',
-    headerName: 'Status',
-    width: 150,
-    renderCell: (params) => {
-      const status = params.value;
-      if (status === 'Y') {
-        return <span style={{ color: 'green', fontWeight: 'bold' }}>Active</span>;
-      } else {
-        return <span style={{ color: 'red', fontWeight: 'bold' }}>Pending</span>;
-      }
-    },
-  },
-  { field: 'reportingOfficer', headerName: 'Reporting Officer', width: 200 },
-  { field: 'dateOfJoining', headerName: 'Date of Joining', width: 150 },
-  { field: 'grossSalary', headerName: 'Gross Salary', type: 'number', width: 150 },
-];
-
 const EmployeePage = () => {
   const [employees, setEmployees] = useState([]);
   const [filteredEmployees, setFilteredEmployees] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
+
+  const columns = [
+   { 
+    field: 'employeeSerialNumber', 
+    headerName: 'Emp ID', 
+    width: 130,
+    renderCell: (params) => (
+      <Link 
+        to={`/admin/employees/${params.value}`}  // Updated to match new route
+        className="text-indigo-600 hover:text-indigo-800 hover:underline font-medium"
+        style={{ textDecoration: 'none' }}
+      >
+        {params.value}
+      </Link>
+    ),
+  },
+    { field: 'employeeName', headerName: 'Name', width: 200 },
+    { field: 'emailAddress', headerName: 'Email', width: 250 },
+    { field: 'designation', headerName: 'Designation', width: 180 },
+    { field: 'department', headerName: 'Department', width: 150 },
+    {
+      field: 'status',
+      headerName: 'Status',
+      width: 150,
+      renderCell: (params) => {
+        const status = params.value;
+        if (status === 'Y') {
+          return <span style={{ color: 'green', fontWeight: 'bold' }}>Onboarded</span>;
+        } else {
+          return <span style={{ color: 'red', fontWeight: 'bold' }}>Onboarding Pending</span>;
+        }
+      },
+    },
+    { field: 'reportingOfficer', headerName: 'Reporting Officer', width: 200 },
+    { field: 'dateOfJoining', headerName: 'Date of Joining', width: 150 },
+    { field: 'grossSalary', headerName: 'Gross Salary', type: 'number', width: 150 },
+  ];
 
   useEffect(() => {
     const fetchEmployees = async () => {
@@ -52,7 +66,6 @@ const EmployeePage = () => {
         const formattedData = data.map((emp, index) => ({
           ...emp,
           id: emp.employeeSerialNumber || index, // Keep original id logic for DataGrid key
-          // displayEmpId is removed, employeeSerialNumber will be used directly
           status: emp.status || 'N' // Default to 'N' (Pending) if not provided
         }));
         setEmployees(formattedData);
@@ -89,9 +102,6 @@ const EmployeePage = () => {
   return (
     <Box sx={{ p: 3, height: 'calc(100vh - 64px)', display: 'flex', flexDirection: 'column' }}>
       <ToastContainer />
-      {/* <Typography variant="h4" gutterBottom component="div" sx={{ color: 'text.primary' }}>
-        Employee Management
-      </Typography> */}
       <Box sx={{ mb: 2, width: '50%' }}>
         <TextField
           fullWidth
@@ -114,23 +124,22 @@ const EmployeePage = () => {
           loading={loading}
           sx={{
             '& .MuiDataGrid-columnHeaders': {
-              backgroundColor: (theme) => theme.palette.primary.main, // Assuming this results in a light background as per screenshot
-              color: (theme) => theme.palette.text.primary, // Change to a contrasting color like text.primary
-              fontSize: '0.875rem', // Adjust header font size
+              backgroundColor: (theme) => theme.palette.primary.main,
+              color: (theme) => theme.palette.text.primary,
+              fontSize: '0.875rem',
             },
             '& .MuiDataGrid-cell': {
               borderBottom: '1px solid #e0e0e0',
-              fontSize: '0.875rem', // Adjust cell font size
-              color: 'text.primary', // Ensure cell text is visible
+              fontSize: '0.875rem',
+              color: 'text.primary',
             },
             '& .MuiDataGrid-footerContainer': {
               backgroundColor: (theme) => theme.palette.background.paper,
             },
-            // Ensure column header text is visible
             '& .MuiDataGrid-columnHeaderTitle': {
               overflow: 'visible',
               lineHeight: 'normal',
-              fontWeight: 'bold', // Make header text bolder
+              fontWeight: 'bold',
             }
           }}
         />

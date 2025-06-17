@@ -1,6 +1,5 @@
-"use client"
-
-import { useState, useEffect, Suspense, lazy } from "react"
+import React, { useState, useEffect } from "react"
+import { useParams } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   FaEnvelope,
@@ -17,13 +16,84 @@ import {
   FaBuilding,
   FaUserTie,
   FaFileAlt,
+  FaFilePdf,
+  FaFileImage,
+  FaHistory,
 } from "react-icons/fa"
 import { ToastContainer, toast } from "react-toastify"
 import "react-toastify/dist/ReactToastify.css"
 import * as XLSX from "xlsx"
+import { useNavigate } from 'react-router-dom';
 
-// Lazy load the AddUserModal component
-const AddUserModal = lazy(() => import("../modals/add-user-modal"))
+
+// Helper function to create blob URLs from various data formats
+const createBlobUrl = (data, contentType = 'application/octet-stream') => {
+  if (!data) return null;
+  
+  try {
+    // If it's already a data URL, return it directly
+    if (typeof data === 'string' && data.startsWith('data:')) return data;
+    
+    // Handle base64 strings
+    if (typeof data === 'string') {
+      // Check if it looks like base64 data
+      const isBase64 = /^[A-Za-z0-9+/=]+$/.test(data);
+      
+      if (isBase64) {
+        const byteCharacters = atob(data);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: contentType });
+        return URL.createObjectURL(blob);
+      }
+    }
+    
+    // Handle binary data
+    if (typeof data === 'string') {
+      const byteArray = new Uint8Array(data.length);
+      for (let i = 0; i < data.length; i++) {
+        byteArray[i] = data.charCodeAt(i) & 0xff;
+      }
+      const blob = new Blob([byteArray], { type: contentType });
+      return URL.createObjectURL(blob);
+    }
+    
+    // Fallback: return null
+    return null;
+  } catch (error) {
+    console.error('Error creating blob URL:', error);
+    return null;
+  }
+};
+
+// Detect file type from data
+const detectFileType = (data) => {
+  if (!data) return 'unknown';
+  
+  if (typeof data === 'string' && data.startsWith('data:')) {
+    return data.split(';')[0].split('/')[1];
+  }
+  
+  // Try to detect from magic numbers
+  if (typeof data === 'string') {
+    if (data.startsWith('/9j') || data.startsWith('ÿØÿà')) {
+      return 'jpeg';
+    }
+    
+    if (data.startsWith('iVBORw')) {
+      return 'png';
+    }
+    
+    if (data.startsWith('JVBER')) {
+      return 'pdf';
+    }
+  }
+  
+  return 'file';
+};
 
 // Helper function for fetch with timeout
 async function fetchWithTimeout(resource, options = {}, timeout = 10000) {
@@ -141,6 +211,13 @@ const fallbackUserData = {
       passbookFile: null,
       photo: null,
       status: "N",
+      bloodGroup: "O+",
+      dateOfBirth: "1990-05-15",
+      qualificationDocument: null,
+      offerLetter: null,
+      addressProofFile: null,
+      medicalBackgroundDocument: null,
+      legalBackgroundDocument: null,
     },
     {
       srNo: 2,
@@ -168,6 +245,13 @@ const fallbackUserData = {
       passbookFile: null,
       photo: null,
       status: "Y",
+      bloodGroup: "A+",
+      dateOfBirth: "1988-11-22",
+      qualificationDocument: null,
+      offerLetter: null,
+      addressProofFile: null,
+      medicalBackgroundDocument: null,
+      legalBackgroundDocument: null,
     },
   ],
 }
@@ -182,6 +266,9 @@ function formatDate(dateString) {
 }
 
 function UserInfo() {
+    const navigate = useNavigate();
+
+  const { employeeId } = useParams()
   const [activeTab, setActiveTab] = useState("personal")
   const [isEditing, setIsEditing] = useState(false)
   const [currentUserIndex, setCurrentUserIndex] = useState(0)
@@ -190,6 +277,18 @@ function UserInfo() {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [blobUrls, setBlobUrls] = useState({})
+
+  // Clean up blob URLs when component unmounts
+  useEffect(() => {
+    return () => {
+      Object.values(blobUrls).forEach(url => {
+        if (url && url.startsWith('blob:')) {
+          URL.revokeObjectURL(url);
+        }
+      });
+    };
+  }, [blobUrls]);
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -205,15 +304,12 @@ function UserInfo() {
             headers: {
               "Content-Type": "application/json",
               Accept: "application/json",
-              // Add Authorization header if your API requires it
-              // "Authorization": `Bearer ${token}`,
             },
           },
           10000,
         ) // 10 seconds timeout
 
         if (!response.ok) {
-          // Handle non-OK responses even after a successful fetch (e.g., 404, 500)
           const errorData = await response.text().catch(() => "Could not read error response body")
           console.error(`API responded with ${response.status}: ${errorData}`)
           throw new Error(`HTTP error! status: ${response.status}, message: ${errorData}`)
@@ -248,21 +344,63 @@ function UserInfo() {
             passbookFile: user.passbookFile || null,
             status: user.status || "N",
             photo: user.photo || null,
+            bloodGroup: user.bloodGroup || "",
+            dateOfBirth: user.dateOfBirth || "",
+            qualificationDocument: user.qualificationDocument || null,
+            offerLetter: user.offerLetter || null,
+            addressProofFile: user.addressProofFile || null,
+            medicalBackgroundDocument: user.medicalBackground || null,
+            legalBackgroundDocument: user.legalBackground || null,
           }))
 
           setUsers(processedUsers)
-          setFormData(processedUsers[0])
+          
+          // Find the specific employee if employeeId is provided
+          if (employeeId) {
+            const userIndex = processedUsers.findIndex(user => user.employeeSerialNumber === employeeId)
+            if (userIndex !== -1) {
+              setCurrentUserIndex(userIndex)
+              setFormData(processedUsers[userIndex])
+            } else {
+              setFormData(processedUsers[0])
+            }
+          } else {
+            setFormData(processedUsers[0])
+          }
         } else {
           console.log("API returned no users, using fallback data")
           setUsers(fallbackUserData.users)
-          setFormData(fallbackUserData.users[0])
+          
+          // Find the specific employee in fallback data if employeeId is provided
+          if (employeeId) {
+            const userIndex = fallbackUserData.users.findIndex(user => user.employeeSerialNumber === employeeId)
+            if (userIndex !== -1) {
+              setCurrentUserIndex(userIndex)
+              setFormData(fallbackUserData.users[userIndex])
+            } else {
+              setFormData(fallbackUserData.users[0])
+            }
+          } else {
+            setFormData(fallbackUserData.users[0])
+          }
         }
       } catch (err) {
         console.error("Error fetching users:", err)
         setError(err.message)
-
-        setUsers(fallbackUserData.users)
-        setFormData(fallbackUserData.users[0])
+        setUsers(fallbackUserData.users);
+        
+        // Find the specific employee in fallback data if employeeId is provided
+        if (employeeId) {
+          const userIndex = fallbackUserData.users.findIndex(user => user.employeeSerialNumber === employeeId)
+          if (userIndex !== -1) {
+            setCurrentUserIndex(userIndex)
+            setFormData(fallbackUserData.users[userIndex])
+          } else {
+            setFormData(fallbackUserData.users[0])
+          }
+        } else {
+          setFormData(fallbackUserData.users[0])
+        }
 
         toast.error(`Backend server not available. Using demo data.`, {
           position: "top-right",
@@ -274,7 +412,7 @@ function UserInfo() {
     }
 
     fetchUsers()
-  }, [])
+  }, [employeeId])
 
   const handleInputChange = (e) => {
     const { name, value } = e.target
@@ -294,6 +432,22 @@ function UserInfo() {
       }))
     }
   }
+
+  // Handle file uploads
+  const handleFileChange = (e, fieldName) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64Data = reader.result;
+      setFormData(prev => ({
+        ...prev,
+        [fieldName]: base64Data
+      }));
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -394,7 +548,7 @@ function UserInfo() {
       PAN: user.pan,
       Aadhaar: user.adhaar,
       "Personal File Number": user.personalFileNumber,
-      Status: user.status === "Y" ? "Approved" : "Pending",
+      Status: user.status === "Y" ? "Onboarded" : "Onboarding Pending",
     }))
 
     const workbook = XLSX.utils.book_new()
@@ -411,9 +565,9 @@ function UserInfo() {
 
   const getStatusDisplay = (status) => {
     if (status === "Y") {
-      return <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">Approved</span>
+      return <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">Onboarded</span>
     } else {
-      return <span className="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">Pending</span>
+      return <span className="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">Onboarding Pending</span>
     }
   }
 
@@ -421,6 +575,73 @@ function UserInfo() {
     if (!str || typeof str !== "string") return "Not specified"
     return str.length > maxLength ? str.substring(0, maxLength) + "..." : str
   }
+
+  // Render file icon based on detected type
+  const renderFileIcon = (fileData) => {
+    const fileType = detectFileType(fileData);
+    
+    if (fileType === 'pdf') {
+      return <FaFilePdf className="h-5 w-5 text-red-500" />;
+    }
+    
+    if (fileType === 'jpeg' || fileType === 'png' || fileType === 'image') {
+      return <FaFileImage className="h-5 w-5 text-blue-500" />;
+    }
+    
+    return <FaFileAlt className="h-5 w-5 text-indigo-500" />;
+  };
+
+  // Get content type for blob creation
+  const getContentType = (fileData) => {
+    if (!fileData) return 'application/octet-stream';
+    
+    if (typeof fileData === 'string' && fileData.startsWith('data:')) {
+      return fileData.split(';')[0].split(':')[1];
+    }
+    
+    const fileType = detectFileType(fileData);
+    
+    switch (fileType) {
+      case 'pdf': return 'application/pdf';
+      case 'jpeg': return 'image/jpeg';
+      case 'png': return 'image/png';
+      default: return 'application/octet-stream';
+    }
+  };
+
+  // Get blob URL for a file field
+  const getBlobUrl = (fieldName) => {
+    if (!formData[fieldName]) return null;
+    
+    // Use cached URL if available
+    if (blobUrls[fieldName]) return blobUrls[fieldName];
+    
+    const contentType = getContentType(formData[fieldName]);
+    const url = createBlobUrl(formData[fieldName], contentType);
+    
+    if (url) {
+      setBlobUrls(prev => ({ ...prev, [fieldName]: url }));
+    }
+    
+    return url;
+  };
+
+  // Get photo URL
+  const getPhotoUrl = () => {
+    if (!formData.photo) return null;
+    
+    // Use cached URL if available
+    if (blobUrls.photo) return blobUrls.photo;
+    
+    const url = createBlobUrl(formData.photo, 'image/jpeg');
+    
+    if (url) {
+      setBlobUrls(prev => ({ ...prev, photo: url }));
+      return url;
+    }
+    
+    return null;
+  };
 
   if (loading) {
     return (
@@ -466,10 +687,22 @@ function UserInfo() {
     passbookFile: null,
     status: "N",
     photo: null,
+    bloodGroup: "",
+    dateOfBirth: "",
+    qualificationDocument: null,
+    offerLetter: null,
+    addressProofFile: null,
+    medicalBackgroundDocument: null,
+    legalBackgroundDocument: null,
     ...formData,
   }
 
+  // Get photo URL
+  const photoUrl = getPhotoUrl();
+
   return (
+     
+
     <motion.div 
       initial="hidden" 
       animate="visible" 
@@ -481,12 +714,19 @@ function UserInfo() {
         variants={itemVariants}
         className="mb-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-center"
       >
+        <motion.button
+        onClick={() => navigate(-1)} // Go back to previous page
+        className="mb-4 flex items-center text-indigo-600 hover:text-indigo-800"
+      >
+        <FaChevronLeft className="mr-1" />
+        Back to Employee Register 
+      </motion.button>
         <div className="flex items-center space-x-4">
           <motion.h1 
             variants={itemVariants}
             className="text-2xl font-bold text-gray-900 dark:text-white"
           >
-            User Information
+            Employee Information
           </motion.h1>
           <div className="flex items-center space-x-2">
             <motion.button
@@ -526,17 +766,7 @@ function UserInfo() {
             <FaDownload className="mr-2 inline h-4 w-4" />
             Download Users
           </motion.button>
-          <motion.button
-            variants={buttonVariants}
-            whileHover="hover"
-            whileTap="tap"
-            onClick={handleAddUser}
-            className="rounded-full bg-white px-4 py-2 text-sm font-medium text-indigo-600 shadow-sm border-2 border-indigo-500 hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-            title="Add new user"
-          >
-            <FaUserPlus className="mr-2 inline h-4 w-4" />
-            Add User
-          </motion.button>
+          
           {isEditing ? (
             <div className="space-x-2">
               <motion.button
@@ -591,33 +821,6 @@ function UserInfo() {
         </motion.div>
       )}
 
-      <Suspense
-        fallback={
-          <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overflow-x-hidden bg-black bg-opacity-50">
-            <div className="relative max-h-full w-full max-w-6xl p-4">
-              <div className="animate-fade-in-up relative rounded-lg bg-white p-6 shadow dark:bg-gray-800">
-                <div className="flex items-center justify-center h-64">
-                  <motion.div 
-                    className="rounded-full h-12 w-12 border-b-2 border-indigo-500"
-                    animate={{ 
-                      rotate: 360 
-                    }}
-                    transition={{ 
-                      duration: 1, 
-                      repeat: Infinity, 
-                      ease: "linear" 
-                    }}
-                  />
-                  <span className="ml-3 text-gray-600">Loading add user form...</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        }
-      >
-        <AddUserModal isOpen={showModal} onClose={() => setShowModal(false)} onUserAdded={handleUserAdded} />
-      </Suspense>
-
       <motion.div 
         variants={containerVariants}
         className="grid gap-6 lg:grid-cols-3"
@@ -631,7 +834,14 @@ function UserInfo() {
           transition={{ duration: 0.3 }}
         >
           <div className="mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-indigo-100 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-400 overflow-hidden">
-            {safeFormData.photo ? (
+            {photoUrl ? (
+              <img
+                src={photoUrl}
+                alt={safeFormData.employeeName}
+                className="h-full w-full object-cover"
+              />
+            ) : safeFormData.photo ? (
+              // Fallback for raw base64 photo data
               <img
                 src={`data:image/jpeg;base64,${safeFormData.photo}`}
                 alt={safeFormData.employeeName}
@@ -780,7 +990,7 @@ function UserInfo() {
                   Employment Details
                 </motion.button>
               </li>
-              <li role="presentation">
+              <li className="mr-2" role="presentation">
                 <motion.button
                   whileHover={{ y: -1 }}
                   whileTap={{ y: 1 }}
@@ -793,6 +1003,22 @@ function UserInfo() {
                   role="tab"
                 >
                   Documents & Background
+                </motion.button>
+              </li>
+              <li role="presentation">
+                <motion.button
+                  whileHover={{ y: -1 }}
+                  whileTap={{ y: 1 }}
+                  className={`inline-block p-4 border-b-2 rounded-t-lg ${
+                    activeTab === "history"
+                      ? "text-indigo-600 border-indigo-600 dark:text-indigo-400 dark:border-indigo-400"
+                      : "border-transparent hover:text-gray-600 hover:border-gray-300 dark:hover:text-gray-300"
+                  }`}
+                  onClick={() => setActiveTab("history")}
+                  role="tab"
+                >
+                  <FaHistory className="inline mr-1" />
+                 Employee History
                 </motion.button>
               </li>
             </ul>
@@ -880,6 +1106,51 @@ function UserInfo() {
                           onChange={handleInputChange}
                           disabled={!isEditing}
                         />
+                      </div>
+
+                      <div>
+                        <label
+                          className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                          htmlFor="dateOfBirth"
+                        >
+                          Date of Birth
+                        </label>
+                        <input
+                          type="date"
+                          id="dateOfBirth"
+                          name="dateOfBirth"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100"
+                          value={safeFormData.dateOfBirth}
+                          onChange={handleInputChange}
+                          disabled={!isEditing}
+                        />
+                      </div>
+
+                      <div>
+                        <label
+                          className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                          htmlFor="bloodGroup"
+                        >
+                          Blood Group
+                        </label>
+                        <select
+                          id="bloodGroup"
+                          name="bloodGroup"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100"
+                          value={safeFormData.bloodGroup}
+                          onChange={handleInputChange}
+                          disabled={!isEditing}
+                        >
+                          <option value="">Select Blood Group</option>
+                          <option value="A+">A+</option>
+                          <option value="A-">A-</option>
+                          <option value="B+">B+</option>
+                          <option value="B-">B-</option>
+                          <option value="AB+">AB+</option>
+                          <option value="AB-">AB-</option>
+                          <option value="O+">O+</option>
+                          <option value="O-">O-</option>
+                        </select>
                       </div>
 
                       <div className="md:col-span-2">
@@ -1152,115 +1423,377 @@ function UserInfo() {
                         />
                       </div>
 
+                      {/* Document Preview Section */}
                       <div className="md:col-span-2">
-                        <label
-                          className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                          htmlFor="medicalBackground"
-                        >
-                          Medical Background
-                        </label>
-                        <textarea
-                          id="medicalBackground"
-                          name="medicalBackground"
-                          rows="3"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100"
-                          value={safeFormData.medicalBackground}
-                          onChange={handleInputChange}
-                          disabled={!isEditing}
-                        ></textarea>
+                        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-3">Documents Preview</h3>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                          {/* PAN Document */}
+                          {safeFormData.panFile && (
+                            <motion.div 
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: 0.1 }}
+                              className="border rounded-lg p-3 bg-gray-50 dark:bg-gray-700"
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm font-medium">PAN Document</span>
+                                {renderFileIcon(safeFormData.panFile)}
+                              </div>
+                              <a
+                                href={getBlobUrl('panFile')}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-indigo-600 hover:text-indigo-800 block mt-2"
+                              >
+                                View Document
+                              </a>
+                            </motion.div>
+                          )}
+
+                          {/* Aadhaar Document */}
+                          {safeFormData.adhaarFile && (
+                            <motion.div 
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: 0.2 }}
+                              className="border rounded-lg p-3 bg-gray-50 dark:bg-gray-700"
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm font-medium">Aadhaar Document</span>
+                                {renderFileIcon(safeFormData.adhaarFile)}
+                              </div>
+                              <a
+                                href={getBlobUrl('adhaarFile')}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-indigo-600 hover:text-indigo-800 block mt-2"
+                              >
+                                View Document
+                              </a>
+                            </motion.div>
+                          )}
+
+                          {/* Passbook Document */}
+                          {safeFormData.passbookFile && (
+                            <motion.div 
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: 0.3 }}
+                              className="border rounded-lg p-3 bg-gray-50 dark:bg-gray-700"
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm font-medium">Passbook Document</span>
+                                {renderFileIcon(safeFormData.passbookFile)}
+                              </div>
+                              <a
+                                href={getBlobUrl('passbookFile')}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-indigo-600 hover:text-indigo-800 block mt-2"
+                              >
+                                View Document
+                              </a>
+                            </motion.div>
+                          )}
+
+                          {/* Qualification Document */}
+                          {safeFormData.qualificationDocument && (
+                            <motion.div 
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: 0.4 }}
+                              className="border rounded-lg p-3 bg-gray-50 dark:bg-gray-700"
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm font-medium">Qualification Document</span>
+                                {renderFileIcon(safeFormData.qualificationDocument)}
+                              </div>
+                              <a
+                                href={getBlobUrl('qualificationDocument')}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-indigo-600 hover:text-indigo-800 block mt-2"
+                              >
+                                View Document
+                              </a>
+                            </motion.div>
+                          )}
+
+                          {/* Offer Letter Document */}
+                          {safeFormData.offerLetter && (
+                            <motion.div 
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: 0.5 }}
+                              className="border rounded-lg p-3 bg-gray-50 dark:bg-gray-700"
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm font-medium">Offer Letter</span>
+                                {renderFileIcon(safeFormData.offerLetter)}
+                              </div>
+                              <a
+                                href={getBlobUrl('offerLetter')}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-indigo-600 hover:text-indigo-800 block mt-2"
+                              >
+                                View Document
+                              </a>
+                            </motion.div>
+                          )}
+
+                          {/* Address Proof Document */}
+                          {safeFormData.addressProofFile && (
+                            <motion.div 
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: 0.6 }}
+                              className="border rounded-lg p-3 bg-gray-50 dark:bg-gray-700"
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm font-medium">Address Proof</span>
+                                {renderFileIcon(safeFormData.addressProofFile)}
+                              </div>
+                              <a
+                                href={getBlobUrl('addressProofFile')}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-indigo-600 hover:text-indigo-800 block mt-2"
+                              >
+                                View Document
+                              </a>
+                            </motion.div>
+                          )}
+
+                          {/* Medical Background Document */}
+                          {safeFormData.medicalBackgroundDocument && (
+                            <motion.div 
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: 0.7 }}
+                              className="border rounded-lg p-3 bg-gray-50 dark:bg-gray-700"
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm font-medium">Medical Background</span>
+                                {renderFileIcon(safeFormData.medicalBackgroundDocument)}
+                              </div>
+                              <a
+                                href={getBlobUrl('medicalBackgroundDocument')}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-indigo-600 hover:text-indigo-800 block mt-2"
+                              >
+                                View Document
+                              </a>
+                            </motion.div>
+                          )}
+
+                          {/* Legal Background Document */}
+                          {safeFormData.legalBackgroundDocument && (
+                            <motion.div 
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: 0.8 }}
+                              className="border rounded-lg p-3 bg-gray-50 dark:bg-gray-700"
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm font-medium">Legal Background</span>
+                                {renderFileIcon(safeFormData.legalBackgroundDocument)}
+                              </div>
+                              <a
+                                href={getBlobUrl('legalBackgroundDocument')}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-indigo-600 hover:text-indigo-800 block mt-2"
+                              >
+                                View Document
+                              </a>
+                            </motion.div>
+                          )}
+                        </div>
                       </div>
 
+                      {/* File Upload Section */}
                       <div className="md:col-span-2">
-                        <label
-                          className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                          htmlFor="legalBackground"
-                        >
-                          Legal Background
-                        </label>
-                        <textarea
-                          id="legalBackground"
-                          name="legalBackground"
-                          rows="3"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100"
-                          value={safeFormData.legalBackground}
-                          onChange={handleInputChange}
-                          disabled={!isEditing}
-                        ></textarea>
+                        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-3">Upload Documents</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* PAN Document */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" htmlFor="panFile">
+                              PAN Document
+                            </label>
+                            <input
+                              type="file"
+                              id="panFile"
+                              name="panFile"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100 mb-2"
+                              onChange={(e) => handleFileChange(e, "panFile")}
+                              disabled={!isEditing}
+                            />
+                            {safeFormData.panFile && (
+                              <div className="text-xs text-green-600">
+                                Document uploaded successfully
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Aadhaar Document */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" htmlFor="adhaarFile">
+                              Aadhaar Document
+                            </label>
+                            <input
+                              type="file"
+                              id="adhaarFile"
+                              name="adhaarFile"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100 mb-2"
+                              onChange={(e) => handleFileChange(e, "adhaarFile")}
+                              disabled={!isEditing}
+                            />
+                            {safeFormData.adhaarFile && (
+                              <div className="text-xs text-green-600">
+                                Document uploaded successfully
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Passbook Document */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" htmlFor="passbookFile">
+                              Passbook Document
+                            </label>
+                            <input
+                              type="file"
+                              id="passbookFile"
+                              name="passbookFile"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100 mb-2"
+                              onChange={(e) => handleFileChange(e, "passbookFile")}
+                              disabled={!isEditing}
+                            />
+                            {safeFormData.passbookFile && (
+                              <div className="text-xs text-green-600">
+                                Document uploaded successfully
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Qualification Document */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" htmlFor="qualificationDocument">
+                              Qualification Document
+                            </label>
+                            <input
+                              type="file"
+                              id="qualificationDocument"
+                              name="qualificationDocument"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100 mb-2"
+                              onChange={(e) => handleFileChange(e, "qualificationDocument")}
+                              disabled={!isEditing}
+                            />
+                            {safeFormData.qualificationDocument && (
+                              <div className="text-xs text-green-600">
+                                Document uploaded successfully
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Offer Letter Document */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" htmlFor="offerLetter">
+                              Offer Letter Document
+                            </label>
+                            <input
+                              type="file"
+                              id="offerLetter"
+                              name="offerLetter"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100 mb-2"
+                              onChange={(e) => handleFileChange(e, "offerLetter")}
+                              disabled={!isEditing}
+                            />
+                            {safeFormData.offerLetter && (
+                              <div className="text-xs text-green-600">
+                                Document uploaded successfully
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Address Proof Document */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" htmlFor="addressProofFile">
+                              Address Proof Document
+                            </label>
+                            <input
+                              type="file"
+                              id="addressProofFile"
+                              name="addressProofFile"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100 mb-2"
+                              onChange={(e) => handleFileChange(e, "addressProofFile")}
+                              disabled={!isEditing}
+                            />
+                            {safeFormData.addressProofFile && (
+                              <div className="text-xs text-green-600">
+                                Document uploaded successfully
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Medical Background Document */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" htmlFor="medicalBackgroundDocument">
+                              Medical Background Document
+                            </label>
+                            <input
+                              type="file"
+                              id="medicalBackgroundDocument"
+                              name="medicalBackgroundDocument"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100 mb-2"
+                              onChange={(e) => handleFileChange(e, "medicalBackgroundDocument")}
+                              disabled={!isEditing}
+                            />
+                            {safeFormData.medicalBackgroundDocument && (
+                              <div className="text-xs text-green-600">
+                                Document uploaded successfully
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Legal Background Document */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" htmlFor="legalBackgroundDocument">
+                              Legal Background Document
+                            </label>
+                            <input
+                              type="file"
+                              id="legalBackgroundDocument"
+                              name="legalBackgroundDocument"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100 mb-2"
+                              onChange={(e) => handleFileChange(e, "legalBackgroundDocument")}
+                              disabled={!isEditing}
+                            />
+                            {safeFormData.legalBackgroundDocument && (
+                              <div className="text-xs text-green-600">
+                                Document uploaded successfully
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
-
-                      {safeFormData.panFile && (
-                        <motion.div 
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: 0.1 }}
-                        >
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                            PAN Document
-                          </label>
-                          <div className="flex items-center space-x-2 mt-2">
-                            <FaFileAlt className="h-5 w-5 text-indigo-500" />
-                            <span className="text-sm text-gray-600">PAN Document</span>
-                            <a
-                              href={safeFormData.panFile}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-sm text-indigo-600 hover:text-indigo-800"
-                            >
-                              View
-                            </a>
-                          </div>
-                        </motion.div>
-                      )}
-
-                      {safeFormData.adhaarFile && (
-                        <motion.div 
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: 0.2 }}
-                        >
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                            Aadhaar Document
-                          </label>
-                          <div className="flex items-center space-x-2 mt-2">
-                            <FaFileAlt className="h-5 w-5 text-indigo-500" />
-                            <span className="text-sm text-gray-600">Aadhaar Document</span>
-                            <a
-                              href={safeFormData.adhaarFile}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-sm text-indigo-600 hover:text-indigo-800"
-                            >
-                              View
-                            </a>
-                          </div>
-                        </motion.div>
-                      )}
-
-                      {safeFormData.passbookFile && (
-                        <motion.div 
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: 0.3 }}
-                        >
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                            Passbook Document
-                          </label>
-                          <div className="flex items-center space-x-2 mt-2">
-                            <FaFileAlt className="h-5 w-5 text-indigo-500" />
-                            <span className="text-sm text-gray-600">Bank Passbook</span>
-                            <a
-                              href={safeFormData.passbookFile}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-sm text-indigo-600 hover:text-indigo-800"
-                            >
-                              View
-                            </a>
-                          </div>
-                        </motion.div>
-                      )}
                     </div>
                   </form>
+                </motion.div>
+              )}
+
+              {activeTab === "history" && (
+                <motion.div 
+                  key="history"
+                  variants={tabContentVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  className="flex flex-col items-center justify-center h-64"
+                >
+                  <FaHistory className="text-gray-400 text-5xl mb-4" />
+                  <p className="text-gray-500 text-lg">Records yet to arrive</p>
                 </motion.div>
               )}
             </AnimatePresence>

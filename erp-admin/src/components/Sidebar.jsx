@@ -70,26 +70,43 @@ function Sidebar() {
           <p className="mb-2 px-3 text-xs font-semibold uppercase text-gray-500">
             Main
           </p>
-          <SidebarLink to="/admin/dashboard" icon={<FaTachometerAlt />}>
-            Dashboard
-          </SidebarLink>
-          <SidebarLink to="/admin/user-info" icon={<FaUser />}>
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+          <SidebarLink to="/admin/AddEmployee" icon={<FaUser />}>
             Add Employee
           </SidebarLink>
           <SidebarLink to="/admin/employees" icon={<FaUsersCog />}>
             Employee Register
           </SidebarLink>
           
+          
           <p className="mb-2 mt-6 px-3 text-xs font-semibold uppercase text-gray-500">
             Management
           </p>
-          <SidebarLink to="/admin/tasks" icon={<FaClipboardList />}>
-            Tasks
+          <SidebarLink to="/admin/add-holiday" icon={<FaClipboardList />}>
+            Holiday 
           </SidebarLink>
-          <SidebarLink to="/admin/calendar" icon={<FaCalendarAlt />}>
-            Calendar
+         
+          {/* <SidebarLink to="/admin/approved-holidays" icon={<FaCalendarAlt />}>
+            approved-holidays
+            
           </SidebarLink>
-          
+           */}
           <p className="mb-2 mt-6 px-3 text-xs font-semibold uppercase text-gray-500">
             System
           </p>
