@@ -488,10 +488,10 @@ const HolidayManagement = () => {
   const getTypeColor = (type) => {
     const colors = {
       'National': 'bg-blue-100 text-blue-800 border-blue-200',
-      'Religious': 'bg-purple-100 text-purple-800 border-purple-200',
-      'Festival': 'bg-orange-100 text-orange-800 border-orange-200',
-      'Regional': 'bg-green-100 text-green-800 border-green-200',
-      'Cultural': 'bg-indigo-100 text-indigo-800 border-indigo-200'
+      'Local': 'bg-purple-100 text-purple-800 border-purple-200',
+      'Election': 'bg-orange-100 text-orange-800 border-orange-200',
+      'Bank holiday': 'bg-green-100 text-green-800 border-green-200',
+      'Others': 'bg-indigo-100 text-indigo-800 border-indigo-200'
     };
     return colors[type] || 'bg-gray-100 text-gray-800 border-gray-200';
   };
@@ -572,16 +572,7 @@ const HolidayManagement = () => {
         <div className="bg-white rounded-lg shadow-sm mb-6">
           <div className="border-b border-gray-200">
             <nav className="-mb-px flex space-x-8" aria-label="Tabs">
-              <button
-                onClick={() => setActiveTab('approved')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'approved'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Holiday Management
-              </button>
+              
               <button
                 onClick={() => setActiveTab('add')}
                 className={`py-2 px-1 border-b-2 font-medium text-sm ${
@@ -592,6 +583,17 @@ const HolidayManagement = () => {
               >
                 Add Holiday
               </button>
+              <button
+                onClick={() => setActiveTab('approved')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'approved'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Holiday Management
+              </button>
+              
             </nav>
           </div>
 
@@ -647,10 +649,10 @@ const HolidayManagement = () => {
                     >
                       <option value="">All Types</option>
                       <option value="National">National</option>
-                      <option value="Religious">Religious</option>
-                      <option value="Festival">Festival</option>
-                      <option value="Regional">Regional</option>
-                      <option value="Cultural">Cultural</option>
+                      <option value="Local">Local</option>
+                      <option value="Election">Election</option>
+                      <option value="Bank holiday">Bank holiday</option>
+                      <option value="Others">Others</option>
                     </select>
                   </div>
                   <div className="sm:w-48">

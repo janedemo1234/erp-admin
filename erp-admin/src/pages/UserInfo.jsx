@@ -755,17 +755,7 @@ function UserInfo() {
           </div>
         </div>
         <div className="flex space-x-2">
-          <motion.button
-            variants={buttonVariants}
-            whileHover="hover"
-            whileTap="tap"
-            onClick={handleDownloadUsers}
-            className="rounded-full bg-white px-4 py-2 text-sm font-medium text-indigo-600 shadow-sm border-2 border-indigo-500 hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-            title="Download Users Data"
-          >
-            <FaDownload className="mr-2 inline h-4 w-4" />
-            Download Users
-          </motion.button>
+          {/* */}
           
           {isEditing ? (
             <div className="space-x-2">
