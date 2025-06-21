@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 
 const HolidayManagement = () => {
-  const [activeTab, setActiveTab] = useState('approved');
+  const [activeTab, setActiveTab] = useState('add');
   const [holidays, setHolidays] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
