@@ -205,6 +205,8 @@ const UserForm = ({ onUserAdded }) => {
     otherDesignation: "",
     otherBankName: "",
     employmentStatus: "Active",
+     uan: "",
+  epfNumber: "",
     reasonForDiscontinuity: "",
   })
 
@@ -482,6 +484,8 @@ const UserForm = ({ onUserAdded }) => {
         employeeName: employeeName, // This is the concatenated first name + surname
         emergencyContactNumber: newUser.emergencyContactNumber || null,
         address: newUser.address || null,
+         uan: newUser.uan || null,
+  epfNumber: newUser.epfNumber || null,
         emailAddress: newUser.emailAddress || null,
         qualification: newUser.qualification || null,
         bloodGroup: newUser.bloodGroup || null,
@@ -900,6 +904,37 @@ const UserForm = ({ onUserAdded }) => {
                     onChange={handleNewUserInputChange}
                   />
                 </div>
+                {/* Inside the Employment Details section after the existing fields */}
+<div className="space-y-2">
+  <label htmlFor="new-uan" className="block text-sm font-semibold text-gray-800">
+    UAN Number (Universal Account Number)
+  </label>
+  <input
+    type="text"
+    id="new-uan"
+    name="uan"
+    className="w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-gray-50 focus:bg-white"
+    value={newUser.uan}
+    onChange={handleNewUserInputChange}
+    placeholder="Enter 12-digit UAN"
+    maxLength="12"
+  />
+</div>
+
+<div className="space-y-2">
+  <label htmlFor="new-epfNumber" className="block text-sm font-semibold text-gray-800">
+    EPF Number (Employee Provident Fund)
+  </label>
+  <input
+    type="text"
+    id="new-epfNumber"
+    name="epfNumber"
+    className="w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-gray-50 focus:bg-white"
+    value={newUser.epfNumber}
+    onChange={handleNewUserInputChange}
+    placeholder="Enter EPF number"
+  />
+</div>
                 <div className="space-y-2">
                   <label htmlFor="new-designation" className="block text-sm font-semibold text-gray-800">
                     Designation
