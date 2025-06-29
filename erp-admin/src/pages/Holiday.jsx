@@ -32,6 +32,7 @@ const HolidayManagement = () => {
       isOptional: false,
       year: new Date().getFullYear(),
       description: "",
+      customType: "",
     },
   ]);
 
@@ -380,6 +381,7 @@ const HolidayManagement = () => {
         isOptional: false,
         year: new Date().getFullYear(),
         description: "",
+        customType: "",
       },
     ]);
   };
@@ -490,7 +492,7 @@ const HolidayManagement = () => {
       'National': 'bg-blue-100 text-blue-800 border-blue-200',
       'Local': 'bg-purple-100 text-purple-800 border-purple-200',
       'Election': 'bg-orange-100 text-orange-800 border-orange-200',
-      'Bank holiday': 'bg-green-100 text-green-800 border-green-200',
+      'Bank Holiday': 'bg-green-100 text-green-800 border-green-200',
       'Others': 'bg-indigo-100 text-indigo-800 border-indigo-200'
     };
     return colors[type] || 'bg-gray-100 text-gray-800 border-gray-200';
@@ -651,7 +653,7 @@ const HolidayManagement = () => {
                       <option value="National">National</option>
                       <option value="Local">Local</option>
                       <option value="Election">Election</option>
-                      <option value="Bank holiday">Bank holiday</option>
+                      <option value="Bank Holiday">Bank Holiday</option>
                       <option value="Others">Others</option>
                     </select>
                   </div>
@@ -858,11 +860,27 @@ const HolidayManagement = () => {
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
                       >
                         <option value="National">National</option>
-                        <option value="Regional">Regional</option>
-                        <option value="Religious">Religious</option>
-                        <option value="Cultural">Cultural</option>
-                        <option value="Festival">Festival</option>
+                        <option value="Local">Local</option>
+                        <option value="Election">Election</option>
+                        <option value="Bank Holiday">Bank Holiday</option>
+                        <option value="Others">Others</option>
                       </select>
+                      
+                      {/* Custom Type Text Area - Only show when "Others" is selected */}
+                      {form.holidayType === 'Others' && (
+                        <div className="mt-3">
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Specify Holiday Type *
+                          </label>
+                          <textarea
+                            value={form.customType}
+                            onChange={(e) => updateHolidayForm(index, 'customType', e.target.value)}
+                            placeholder="Please specify the type of holiday"
+                            rows="2"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                          />
+                        </div>
+                      )}
                     </div>
 
                     <div>
@@ -877,18 +895,7 @@ const HolidayManagement = () => {
                       />
                     </div>
 
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Description *
-                      </label>
-                      <textarea
-                        value={form.description}
-                        onChange={(e) => updateHolidayForm(index, 'description', e.target.value)}
-                        placeholder="Enter holiday description"
-                        rows="2"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-                      />
-                    </div>
+
                   </div>
                 </div>
               ))}
