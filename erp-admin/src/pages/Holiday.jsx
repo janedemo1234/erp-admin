@@ -43,7 +43,7 @@ const HolidayManagement = () => {
   const [selectedYear, setSelectedYear] = useState(currentYear);
 
   // API Base URL - Update this to match your backend
-  const API_BASE_URL = 'http://localhost:8080/api/holidays';
+  const API_BASE_URL = 'http://18.208.138.143:8080/api/holidays';
 
   // Mock data for fallback when backend is not available
   const mockHolidays = [

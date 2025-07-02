@@ -114,7 +114,7 @@ const EmployeePage = () => {
       setDownloading(true);
       
       // Fetch fresh data from API
-      const response = await fetch("http://localhost:8080/api/user-profiles/all");
+      const response = await fetch("http://18.208.138.143:8080/api/user-profiles/all");
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -209,7 +209,7 @@ const EmployeePage = () => {
     const fetchEmployees = async () => {
       try {
         setLoading(true);
-        const response = await fetch("http://localhost:8080/api/user-profiles/all", {
+        const response = await fetch("http://18.208.138.143:8080/api/user-profiles/all", {
           headers: {
             // Add any necessary headers, e.g., Authorization
           },
